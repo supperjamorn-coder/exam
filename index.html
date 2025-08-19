@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ข้อสอบพนักงานขับรถยก</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            transition: background-color 0.3s ease;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .choice-card {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .choice-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .choice-card.selected {
+            border-color: #3b82f6; /* Blue-500 */
+            background-color: #e0f2fe; /* Blue-50 */
+            transform: scale(1.02);
+        }
+        .choice-card.correct {
+            border-color: #10b981; /* Green-500 */
+            background-color: #d1fae5; /* Green-50 */
+            transform: scale(1.02);
+        }
+        .choice-card.incorrect {
+            border-color: #ef4444; /* Red-500 */
+            background-color: #fee2e2; /* Red-50 */
+            transform: scale(1.02);
+        }
+        .image-container {
+            max-height: 300px;
+            overflow: hidden;
+            border-radius: 0.75rem;
+        }
+        .image-container img {
+            width: 100%;
+            height: auto;
+            object-fit: cover;
+        }
+        .button {
+            transition: background-color 0.3s ease, transform 0.3s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div id="app" class="container mx-auto">
+        <!-- Initial Loading State -->
+        <div id="loading-state" class="flex items-center justify-center">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500 mb-4 mx-auto"></div>
+                <p class="text-xl text-gray-700">กำลังโหลดข้อมูลข้อสอบ...</p>
+            </div>
+        </div>
+
+        <!-- Exam UI will be rendered here -->
+        <div id="exam-container" class="hidden">
+            <!-- Content will be injected dynamically by JavaScript -->
+        </div>
+
+        <!-- Result Modal -->
+        <div id="result-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4" onclick="closeModal(event)">
+            <div class="bg-white card p-8 w-full max-w-md text-center transform transition-transform duration-300 scale-95" onclick="event.stopPropagation()">
+                <h2 id="modal-title" class="text-2xl font-bold mb-4 text-blue-600"></h2>
+                <p id="modal-score" class="text-xl mb-4 text-gray-700"></p>
+                <div id="modal-messages" class="text-sm text-gray-500 mb-6"></div>
+                <button onclick="restartExam()" class="button bg-blue-500 text-white font-semibold py-2 px-6 rounded-full hover:bg-blue-600 focus:outline-none">
+                    ทำข้อสอบใหม่
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxI_NVLYMSEztsCv1cKV7yy4dEt0i670EuTENJs7SKCCl9fULWQ23Prqu5LJ3FZG6h_Ig/exec';
+        
+        let examData = null;
+        let currentQuestionIndex = 0;
+        let userAnswers = {};
+
+        // DOM Elements
+        const loadingState = document.getElementById('loading-state');
+        const examContainer = document.getElementById('exam-container');
+        const resultModal = document.getElementById('result-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalScore = document.getElementById('modal-score');
+        const modalMessages = document.getElementById('modal-messages');
+
+        /**
+         * Fetches exam data from the Google Apps Script URL.
+         */
+        async function fetchExamData() {
+            try {
+                console.log("Attempting to fetch data from:", SCRIPT_URL);
+                const response = await fetch(SCRIPT_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (data && data.questions && Array.isArray(data.questions)) {
+                    examData = data;
+                    console.log("Data fetched successfully:", examData);
+                    loadingState.classList.add('hidden');
+                    examContainer.classList.remove('hidden');
+                    renderQuestion();
+                } else {
+                    throw new Error("Fetched data is not in the expected format.");
+                }
+            } catch (error) {
+                console.error("Failed to fetch exam data:", error);
+                loadingState.innerHTML = `
+                    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md shadow-md text-center max-w-md mx-auto">
+                        <strong class="font-bold">เกิดข้อผิดพลาด!</strong>
+                        <span class="block sm:inline mt-2 sm:mt-0"> ไม่สามารถดึงข้อมูลข้อสอบได้: ${error.message}</span>
+                        <p class="text-sm mt-2">โปรดตรวจสอบ URL ของ Web App และการตั้งค่าการเข้าถึงอีกครั้ง</p>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Renders the current question and its choices to the UI.
+         */
+        function renderQuestion() {
+            if (!examData || !examData.questions || examData.questions.length === 0) {
+                return;
+            }
+
+            const question = examData.questions[currentQuestionIndex];
+            
+            // Set background color based on DisplayType
+            const cardBgColor = question.DisplayType == 2 ? 'bg-green-50' : 'bg-white';
+
+            // Generate the HTML for the current question
+            const questionHtml = `
+                <div class="${cardBgColor} card p-6 sm:p-8 rounded-2xl w-full">
+                    <div class="text-center mb-6">
+                        <span class="bg-blue-100 text-blue-800 text-sm font-semibold px-4 py-2 rounded-full">
+                            คำถามที่ ${currentQuestionIndex + 1} จาก ${examData.questions.length}
+                        </span>
+                    </div>
+                    
+                    ${question.QuestionImageURL ? `
+                        <div class="image-container mb-6">
+                            <img src="${question.QuestionImageURL}" alt="Question Image" class="w-full h-auto object-cover">
+                        </div>` : ''}
+                    
+                    <h2 class="text-xl sm:text-2xl font-semibold text-gray-800 mb-6 leading-relaxed">
+                        ${question.QuestionText}
+                    </h2>
+                    
+                    <div id="choices-container" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        ${question.choices.map((choice, index) => `
+                            <div 
+                                class="choice-card bg-gray-50 border-2 border-transparent rounded-xl p-4 flex items-center shadow-sm" 
+                                data-index="${index}"
+                                onclick="selectChoice(${index})"
+                            >
+                                <span class="text-sm sm:text-base text-gray-700 font-medium">${choice.AnswerText}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div class="mt-8 flex justify-between">
+                        <button 
+                            id="prev-btn" 
+                            onclick="prevQuestion()" 
+                            class="button bg-gray-200 text-gray-800 font-semibold py-2 px-6 rounded-full hover:bg-gray-300 focus:outline-none ${currentQuestionIndex === 0 ? 'hidden' : ''}"
+                        >
+                            ย้อนกลับ
+                        </button>
+                        <button 
+                            id="next-btn" 
+                            onclick="nextQuestion()" 
+                            class="button bg-blue-500 text-white font-semibold py-2 px-6 rounded-full hover:bg-blue-600 focus:outline-none"
+                        >
+                            ${currentQuestionIndex === examData.questions.length - 1 ? 'ส่งคำตอบ' : 'คำถามถัดไป'}
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            examContainer.innerHTML = questionHtml;
+            highlightSelectedChoice();
+        }
+
+        /**
+         * Highlights the user's previously selected choice for the current question.
+         */
+        function highlightSelectedChoice() {
+            const choices = document.querySelectorAll('.choice-card');
+            const selectedChoiceIndex = userAnswers[currentQuestionIndex];
+            if (selectedChoiceIndex !== undefined) {
+                choices.forEach(choice => {
+                    choice.classList.remove('selected');
+                });
+                choices[selectedChoiceIndex].classList.add('selected');
+            }
+        }
+        
+        /**
+         * Handles the selection of an answer choice.
+         * @param {number} choiceIndex The index of the selected choice.
+         */
+        function selectChoice(choiceIndex) {
+            const choices = document.querySelectorAll('.choice-card');
+            
+            // Remove 'selected' class from all choices
+            choices.forEach(choice => {
+                choice.classList.remove('selected');
+            });
+            
+            // Add 'selected' class to the clicked choice
+            choices[choiceIndex].classList.add('selected');
+            
+            // Store the user's answer
+            userAnswers[currentQuestionIndex] = choiceIndex;
+        }
+
+        /**
+         * Navigates to the next question or submits the exam.
+         */
+        function nextQuestion() {
+            // Check if an answer has been selected for the current question
+            if (userAnswers[currentQuestionIndex] === undefined) {
+                // Using a custom modal instead of alert() for better UI
+                showCustomAlert('กรุณาเลือกคำตอบก่อน');
+                return;
+            }
+
+            if (currentQuestionIndex < examData.questions.length - 1) {
+                currentQuestionIndex++;
+                renderQuestion();
+            } else {
+                submitExam();
+            }
+        }
+        
+        /**
+         * Navigates to the previous question.
+         */
+        function prevQuestion() {
+            if (currentQuestionIndex > 0) {
+                currentQuestionIndex--;
+                renderQuestion();
+            }
+        }
+        
+        /**
+         * Submits the exam, calculates the score, and shows the result modal.
+         */
+        function submitExam() {
+            let score = 0;
+            const totalQuestions = examData.questions.length;
+
+            examData.questions.forEach((question, qIndex) => {
+                const selectedChoiceIndex = userAnswers[qIndex];
+                if (selectedChoiceIndex !== undefined) {
+                    const selectedChoice = question.choices[selectedChoiceIndex];
+                    if (selectedChoice.IsCorrect) {
+                        score++;
+                    }
+                }
+            });
+
+            // Show result modal
+            modalTitle.textContent = 'ผลการสอบ';
+            modalScore.textContent = `คุณได้ ${score} คะแนน จาก ${totalQuestions} คะแนน`;
+
+            if (score >= totalQuestions * 0.8) {
+                modalMessages.textContent = 'ยอดเยี่ยม! คุณผ่านการทดสอบแล้ว';
+                modalScore.classList.remove('text-red-600');
+                modalScore.classList.add('text-green-600');
+            } else {
+                modalMessages.textContent = 'น่าเสียดาย! คุณยังไม่ผ่านการทดสอบ ลองใหม่อีกครั้ง';
+                modalScore.classList.remove('text-green-600');
+                modalScore.classList.add('text-red-600');
+            }
+
+            resultModal.classList.remove('hidden');
+            resultModal.classList.add('flex');
+            document.querySelector('#result-modal > div').classList.remove('scale-95');
+            document.querySelector('#result-modal > div').classList.add('scale-100');
+        }
+
+        /**
+         * Closes the result modal.
+         */
+        function closeModal(event) {
+            // Check if the click event occurred on the modal background
+            if (event.target === resultModal) {
+                resultModal.classList.add('hidden');
+                resultModal.classList.remove('flex');
+            }
+        }
+
+        /**
+         * Restarts the exam.
+         */
+        function restartExam() {
+            closeModal({ target: resultModal });
+            currentQuestionIndex = 0;
+            userAnswers = {};
+            renderQuestion();
+        }
+        
+        /**
+         * A custom alert function to replace native alert().
+         * @param {string} message The message to display.
+         */
+        function showCustomAlert(message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.id = 'custom-alert';
+            alertDiv.className = 'fixed inset-0 flex items-center justify-center p-4 z-50 bg-black bg-opacity-50';
+            alertDiv.innerHTML = `
+                <div class="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full text-center">
+                    <p class="text-lg text-gray-800 mb-4">${message}</p>
+                    <button onclick="document.getElementById('custom-alert').remove()" class="bg-blue-500 text-white font-semibold py-2 px-6 rounded-full hover:bg-blue-600">
+                        ตกลง
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(alertDiv);
+        }
+
+        // Initial call to fetch data when the window loads
+        window.onload = fetchExamData;
+
+    </script>
+</body>
+</html>
