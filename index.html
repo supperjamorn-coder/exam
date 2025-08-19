@@ -193,8 +193,8 @@
                 
                 if (data && data.questions) {
                     examData = data.questions;
-                    showPage('exam-page');
-                    renderQuestion();
+                    // Preload all images before showing the exam page
+                    preloadImages();
                 } else {
                     console.error('Invalid data format:', data);
                     showMessage('ข้อผิดพลาด: ไม่สามารถโหลดข้อมูลได้', 'error');
@@ -202,9 +202,59 @@
             } catch (error) {
                 console.error('Error fetching exam data:', error);
                 showMessage('ข้อผิดพลาดในการเชื่อมต่อ: กรุณาลองใหม่อีกครั้ง', 'error');
-            } finally {
-                loadingScreen.classList.add('hidden');
             }
+        }
+        
+        /**
+         * Preloads all images from the exam data.
+         * @returns {Promise<void>}
+         */
+        async function preloadImages() {
+            const imagePromises = [];
+            const allImageUrls = new Set();
+        
+            // Collect all unique image URLs from questions and choices
+            examData.forEach(question => {
+                if (question.QuestionImageURL) {
+                    let imgSrc = question.QuestionImageURL;
+                    let driveMatch = imgSrc.match(/\/file\/d\/([\w-]+)\/view/);
+                    if (!driveMatch) {
+                        driveMatch = imgSrc.match(/\/open\?id=([\w-]+)/);
+                    }
+                    if (driveMatch) {
+                        const fileId = driveMatch[1];
+                        imgSrc = `https://lh3.googleusercontent.com/d/${fileId}=s1000`;
+                    }
+                    allImageUrls.add(imgSrc);
+                }
+                question.choices.forEach(choice => {
+                    if (choice.AnswerImageURL) {
+                        allImageUrls.add(choice.AnswerImageURL);
+                    }
+                });
+            });
+
+            // Create a promise for each image to be loaded
+            allImageUrls.forEach(imageUrl => {
+                const promise = new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => resolve();
+                    img.onerror = () => {
+                        console.warn(`Failed to preload image: ${imageUrl}`);
+                        resolve(); // Resolve anyway to allow the app to continue
+                    };
+                    img.src = imageUrl;
+                });
+                imagePromises.push(promise);
+            });
+            
+            // Wait for all images to load (or fail to load)
+            await Promise.allSettled(imagePromises);
+            
+            // Once all images are preloaded, show the exam page
+            loadingScreen.classList.add('hidden');
+            showPage('exam-page');
+            renderQuestion();
         }
 
         /**
@@ -224,18 +274,35 @@
             questionContent.appendChild(questionTextElement);
             
 
-            // Render question image if available (Google Drive direct link support)
+            // Render question image if available
             if (question.QuestionImageURL) {
                 let imgSrc = question.QuestionImageURL;
-                // If Google Drive link, convert to direct image link
-                const driveMatch = imgSrc.match(/\/file\/d\/([\w-]+)\/view/);
-                if (driveMatch) {
-                    imgSrc = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+                // Attempt to get the file ID from various Google Drive URL formats
+                let driveMatch = imgSrc.match(/\/file\/d\/([\w-]+)\/view/);
+                if (!driveMatch) {
+                    driveMatch = imgSrc.match(/\/open\?id=([\w-]+)/);
                 }
+                if (driveMatch) {
+                    const fileId = driveMatch[1];
+                    imgSrc = `https://lh3.googleusercontent.com/d/${fileId}=s1000`; // Use a different Google server for direct embedding
+                }
+                
                 const imgElement = document.createElement('img');
                 imgElement.src = imgSrc;
                 imgElement.alt = 'Question Image';
                 imgElement.className = 'mb-4 w-full h-auto rounded-lg shadow-sm';
+                
+                // Add an onerror handler to show a message if the image fails to load
+                imgElement.onerror = () => {
+                    console.error('Failed to load image from URL:', imgSrc);
+                    const errorMsg = document.createElement('p');
+                    errorMsg.className = 'text-red-500 text-center text-sm';
+                    errorMsg.textContent = 'ไม่สามารถแสดงรูปภาพได้ กรุณาตรวจสอบ URL รูปภาพ';
+                    questionContent.appendChild(errorMsg);
+                    // Remove the broken image element
+                    imgElement.remove();
+                };
+
                 questionContent.appendChild(imgElement);
             }
             
@@ -373,7 +440,6 @@
                 
                 let reviewContent = `
                     <p class="font-bold mb-2">คำถามที่ ${index + 1}: ${question.QuestionText}</p>
-                    ${question.QuestionImageURL ? `<img src="${question.QuestionImageURL}" alt="Question Image" class="mb-2 w-full h-auto rounded-lg shadow-sm">` : ''}
                     <p class="text-green-700 font-semibold">✅ คำตอบที่ถูกต้อง: ${correctAnswer.AnswerText}</p>
                 `;
 
@@ -437,5 +503,60 @@
         submitBtn.addEventListener('click', submitExam);
         restartBtn.addEventListener('click', restartQuiz);
     </script>
+
+    <!--
+    สรุปการแก้ไขโค้ด:
+
+    1.  ส่วนการโหลดรูปภาพล่วงหน้า (Preloading Images):
+        -   **ฟังก์ชัน `preloadImages()`:** ถูกเพิ่มเข้ามาเพื่อทำการโหลดรูปภาพทั้งหมดที่ใช้ในแบบทดสอบ (ทั้งรูปในคำถามและรูปในตัวเลือก) ก่อนที่จะเริ่มแสดงหน้าแบบทดสอบจริง
+        -   **การตรวจสอบ URL:** ภายในฟังก์ชัน `preloadImages()` มีการตรวจสอบ URL ของรูปภาพจาก Google Drive และแปลงให้อยู่ในรูปแบบที่สามารถแสดงผลได้บนหน้าเว็บ
+        -   **`Promise.allSettled()`:** ใช้คำสั่งนี้เพื่อรอให้รูปภาพทั้งหมดโหลดเสร็จสิ้น (ไม่ว่าจะสำเร็จหรือล้มเหลว) ก่อนที่จะดำเนินการต่อ เพื่อให้มั่นใจว่าผู้ใช้จะไม่เห็นรูปภาพที่กำลังโหลดอยู่ระหว่างทำแบบทดสอบ
+        -   **การเชื่อมต่อ:** หลังจาก `fetchExamData()` ดึงข้อมูลชุดคำถามมาได้แล้ว จะเรียก `preloadImages()` เพื่อเริ่มกระบวนการโหลดรูปภาพล่วงหน้าแทนการแสดงคำถามทันที
+// โค้ดเดิมที่พบปัญหาไม่สามารถ แสดงรูปภาพได้
+if (question.QuestionImageURL) {
+    const imgElement = document.createElement('img');
+    imgElement.src = question.QuestionImageURL; // URL นี้ไม่สามารถแสดงผลได้โดยตรง
+    imgElement.alt = 'Question Image';
+    imgElement.className = 'mb-4 w-full h-auto rounded-lg shadow-sm';
+    questionContent.appendChild(imgElement);
+}
+
+โค้ดที่ แก้ไขแล้ว และแสดงรูปภาพได้
+// โค้ดที่แก้ไขแล้ว
+if (question.QuestionImageURL) {
+    let imgSrc = question.QuestionImageURL;
+    // Attempt to get the file ID from various Google Drive URL formats
+    let driveMatch = imgSrc.match(/\/file\/d\/([\w-]+)\/view/);
+    if (!driveMatch) {
+        driveMatch = imgSrc.match(/\/open\?id=([\w-]+)/);
+    }
+    if (driveMatch) {
+        const fileId = driveMatch[1];
+        imgSrc = `https://lh3.googleusercontent.com/d/${fileId}=s1000`; // แปลงเป็น URL รูปแบบที่ถูกต้อง
+    }
+    
+    const imgElement = document.createElement('img');
+    imgElement.src = imgSrc;
+    imgElement.alt = 'Question Image';
+    imgElement.className = 'mb-4 w-full h-auto rounded-lg shadow-sm';
+    
+    // Add an onerror handler to show a message if the image fails to load
+    imgElement.onerror = () => {
+        console.error('Failed to load image from URL:', imgSrc);
+        const errorMsg = document.createElement('p');
+        errorMsg.className = 'text-red-500 text-center text-sm';
+        errorMsg.textContent = 'ไม่สามารถแสดงรูปภาพได้ กรุณาตรวจสอบ URL รูปภาพ';
+        questionContent.appendChild(errorMsg);
+        // Remove the broken image element
+        imgElement.remove();
+    };
+
+    questionContent.appendChild(imgElement);
+}
+
+    2.  ส่วนการแสดงผลเฉลยข้อสอบ:
+        -   **ฟังก์ชัน `renderAnswersReview()`:** ได้รับการแก้ไขให้ลบส่วนที่แสดงรูปภาพของเฉลยออกไป
+        -   **การแสดงผล:** ตอนนี้ในหน้าเฉลยจะแสดงเฉพาะข้อความของคำถามและคำตอบที่ถูกต้อง รวมถึงคำตอบของผู้ใช้ (ถ้ามี) โดยไม่มีรูปภาพประกอบแล้วตามที่คุณต้องการ
+    -->
 </body>
 </html>
