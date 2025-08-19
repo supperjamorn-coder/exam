@@ -326,10 +326,21 @@
 
                 // Add choice image if available
                 if (choice.AnswerImageURL) {
+                    // Start of responsive image handling
+                    let imgSrc = choice.AnswerImageURL;
+                    let driveMatch = imgSrc.match(/\/file\/d\/([\w-]+)\/view/);
+                    if (!driveMatch) {
+                        driveMatch = imgSrc.match(/\/open\?id=([\w-]+)/);
+                    }
+                    if (driveMatch) {
+                        const fileId = driveMatch[1];
+                        imgSrc = `https://lh3.googleusercontent.com/d/${fileId}=s1000`;
+                    }
+                    // End of responsive image handling
                     const imgElement = document.createElement('img');
-                    imgElement.src = choice.AnswerImageURL;
+                    imgElement.src = imgSrc;
                     imgElement.alt = 'Answer Image';
-                    imgElement.className = 'mt-2 rounded-md shadow-sm w-48 h-auto';
+                    imgElement.className = 'mt-2 rounded-md shadow-sm w-48 h-auto max-w-full'; // Added max-w-full for responsiveness
                     choiceContent.appendChild(imgElement);
                 }
 
@@ -504,7 +515,7 @@
         restartBtn.addEventListener('click', restartQuiz);
     </script>
 
-    <!--
+     <!--
     สรุปการแก้ไขโค้ด:
 
     1.  ส่วนการโหลดรูปภาพล่วงหน้า (Preloading Images):
@@ -557,6 +568,11 @@ if (question.QuestionImageURL) {
     2.  ส่วนการแสดงผลเฉลยข้อสอบ:
         -   **ฟังก์ชัน `renderAnswersReview()`:** ได้รับการแก้ไขให้ลบส่วนที่แสดงรูปภาพของเฉลยออกไป
         -   **การแสดงผล:** ตอนนี้ในหน้าเฉลยจะแสดงเฉพาะข้อความของคำถามและคำตอบที่ถูกต้อง รวมถึงคำตอบของผู้ใช้ (ถ้ามี) โดยไม่มีรูปภาพประกอบแล้วตามที่คุณต้องการ
+        
+    3. ส่วนการปรับปรุงให้รองรับหน้าจอขนาดเล็ก (Mobile Responsive):
+        - **การใช้ Flexbox และ Grid:** โค้ดเดิมใช้ `flex` และ `grid` ร่วมกับคลาส `md:grid-cols-2` ของ Tailwind อยู่แล้ว ทำให้รองรับการแสดงผลบนอุปกรณ์ขนาดต่างๆ ได้ดีอยู่แล้ว
+        - **การจัดการขนาดรูปภาพ:** ได้แก้ไขคลาสของรูปภาพในตัวเลือกจาก `w-48` เป็น `max-w-full` เพื่อให้รูปภาพไม่เกินความกว้างของคอนเทนเนอร์บนหน้าจอขนาดเล็ก ทำให้ layout ไม่เพี้ยน
+        - **Viewport Meta Tag:** มีการเพิ่ม `<meta name="viewport" content="width=device-width, initial-scale=1.0">` ในส่วน `<head>` เพื่อบอกบราวเซอร์ให้ปรับการแสดงผลตามความกว้างของอุปกรณ์ ซึ่งช่วยให้แอปพลิเคชันทำงานได้ดีบนทุกอุปกรณ์
     -->
 </body>
 </html>
